@@ -23,6 +23,7 @@ def compute_intermediate_size(n):
     return int(math.ceil(n * 8 / 3) + 255) // 256 * 256
 
 def convert_to_hf(args, src_driver, tgt_driver):
+    print("Converting to huggingface format...")
     src = args.src
     tgt = args.tgt
     assert len(tgt.split("://")) == 2
@@ -48,6 +49,7 @@ def convert_to_hf(args, src_driver, tgt_driver):
     # Load weights
     folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
     os.makedirs(folder, exist_ok=True)
+    print("Loading weights...")
     if args.model_size == "7B":
         # Not sharded
         # (The sharded implementation would also work, but this is simpler.)
@@ -58,6 +60,7 @@ def convert_to_hf(args, src_driver, tgt_driver):
             src_driver.torch_load(os.path.join(src, f"tp_{i}.pt"))
             for i in range(num_shards)
         ]
+    print("Start converting...")
     param_count = 0
     index_dict = {"weight_map": {}}
     for layer_i in tqdm(range(n_layers)):
@@ -191,5 +194,5 @@ def convert_to_hf(args, src_driver, tgt_driver):
         tgt_url = f"{prefix}://{args.ak}:{args.sk}@{bucket_name}.{args.bucket_ip}/{path}/"
     else:
         tgt_url = f"{prefix}://{bucket_name}.{args.bucket_ip}/{path}/"
-    os.system(f'/mnt/cache/share/sensesync cp {tmp_folder} {tgt_url}')
+    os.system(f'/mnt/cache/share/sensesync cp {tmp_folder}/ {tgt_url}')
     shutil.rmtree(folder)

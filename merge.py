@@ -57,7 +57,7 @@ def merge(args, src_driver, tgt_driver):
     print('Config loaded.', flush=True)
 
     confs = {"dim": model_config['hidden_size'], "multiple_of": 256, "n_heads": model_config['num_attention_heads'], "n_layers": model_config['num_layers'], "norm_eps": 1e-05, "vocab_size": -1}
-    tgt_driver.json_save(confs, os.path.join(folder, 'params.json'))
+    tgt_driver.json_save(confs, os.path.join(tgt, 'params.json'))
 
     assert src_driver.isdir(src), 'not a folder.'
     fns = src_driver.list(src)
@@ -86,7 +86,7 @@ def merge(args, src_driver, tgt_driver):
     try:
         for tp in tqdm(range(max_tp)):
             idx = tp
-            state = merge_pp(src, tp, max_pp)
+            state = merge_pp(src, src_driver, tp, max_pp)
             state = {key[6:]:value for key,value in state.items()}
 
             current_states = {}
