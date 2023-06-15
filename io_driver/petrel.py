@@ -87,3 +87,7 @@ class PetrelIODriver(IODriver):
     @staticmethod
     def makedirs(path: str, exist_ok: bool = False):
         pass
+
+    @staticmethod
+    def is_local():
+       return False

@@ -34,3 +34,27 @@ python main.py --src s3://model_weights/0331/pw_7132k/1317 \
                --ak your_ak \
                --sk your_sk
 ```
+
+下面的参数则会将源文件夹中 llama 格式的权重转换为 huggingface 格式。注意添加了 `--from_llama` 参数后目标文件夹不会自动加上 `_hf` 后缀。
+
+```bash
+python main.py --src s3://model_weights/0331/evaluation/exported_llama/pw_7132k \
+               --tgt s3://model_weights/0331/evaluation/exported_llama/pw_7132k_hf \
+               --model_size 7B \
+               --bucket_ip 10.140.2.204:80 \
+               --ak your_ak \
+               --sk your_sk \
+               --from_llama
+```
+
+如果想要转换 tokenizer，则可以执行下面的命令：
+
+huggingface 格式的 tokenizer 会被保存在 `tgt` 文件夹下。
+
+```bash
+python tokenizer.py --src ./tokenizer.model \
+                    --tgt ./tokenizer \
+                    --bucket_ip 10.140.27.254:80 \
+                    --ak your_ak \
+                    --sk your_sk \
+```

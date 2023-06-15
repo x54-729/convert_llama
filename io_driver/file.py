@@ -70,3 +70,7 @@ class FileIODriver(IODriver):
     @staticmethod
     def makedirs(path: str, exist_ok: bool = False):
         os.makedirs(path, exist_ok=exist_ok)
+
+    @staticmethod
+    def is_local():
+       return True

@@ -59,3 +59,8 @@ class IODriver(ABC):
     @staticmethod
     def makedirs(path: str, exist_ok: bool = False):
         raise NotImplementedError
+    
+    @staticmethod
+    @abstractmethod
+    def is_local():
+        raise NotImplementedError
