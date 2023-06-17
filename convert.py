@@ -58,7 +58,7 @@ def convert_to_hf(args, src_driver, tgt_driver):
         # Sharded
         loaded = [
             src_driver.torch_load(os.path.join(src, f"tp_{i}.pt"))
-            for i in range(num_shards)
+            for i in tqdm(range(num_shards))
         ]
     print("Start converting...")
     param_count = 0
@@ -187,7 +187,7 @@ def convert_to_hf(args, src_driver, tgt_driver):
     # Avoid saving this as part of the config.
     del model.config._name_or_path
 
-    print("Saving in the Transformers format.")
+    print(f"Saving to temp folder {folder} in the Transformers format.")
     tmp_folder = os.path.join(folder, "tmp")
     model.save_pretrained(tmp_folder)
     if args.ak is not None and args.sk is not None:
