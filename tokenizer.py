@@ -35,6 +35,7 @@ def write_tokenizer(args, src_drvier, tgt_driver):
             bucket_name = parts[0]
             path = os.sep.join(parts[1:]).strip('/')
             folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
+            print(f"Saving to temp folder {folder}")
             tokenizer.save_pretrained(folder)
             if args.ak is not None and args.sk is not None:
                 tgt_url = f"{prefix}://{args.ak}:{args.sk}@{bucket_name}.{args.bucket_ip}/{path}/"
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--ak", default=None, help="OSS 对象存储的 Access Key")
     parser.add_argument("--sk", default=None, help="OSS 对象存储的 Secret Key")
     args = parser.parse_args()
-    assert "s3://" not in args.tgt, "args.src needs to be a local path"
+    assert "s3://" not in args.src, "args.src needs to be a local path"
     src_driver = choose_driver(args.src)
     tgt_driver = choose_driver(args.tgt)
     write_tokenizer(args, src_driver, tgt_driver)
