@@ -16,6 +16,7 @@
 - `--model_size`: 模型规模；如果指定了 `--merge_only` 则可以忽略该参数。
 - `--ak`: 对象存储的 Access Key，用于在 `sensesync` 工具进行复制时使用。也可以参照手册通过环境变量 `AWS_ACCESS_KEY_ID` 指定。
 - `--sk`: 对象存储的 Secret Key，用于在 `sensesync` 工具进行复制时使用。也可以参照手册通过环境变量 `AWS_SECRET_ACCESS_KEY` 指定。
+- `--new`: 如果指定了该参数，则会转换新版的权重（一些 bias 的设置和 state dict key 名称不同）。
 - `--merge_only`: 是否仅执行 `merge` 部分，即将权重合并为张量并行的权重。
 - `--from_llama`: 源文件是否是 llama 格式的张量并行权重。可以是通过 `--merge_only` 生成的，也可以是 llama 原始的权重（注意文件命名格式）。
 

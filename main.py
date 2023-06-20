@@ -3,6 +3,7 @@ import os
 from arguments import parse_args
 from io_driver import choose_driver
 from merge import merge
+from new_merge import new_merge
 from convert import convert_to_hf
 
 if 'http_proxy' in os.environ:
@@ -30,8 +31,15 @@ if __name__ == "__main__":
     assert "s3://" in args.tgt, "args.tgt needs to be a path on OSS."
     tgt_driver = choose_driver(args.tgt)
 
+    for sys_param in ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']:
+        if os.getenv(sys_param, None) is not None:
+            del os.environ[sys_param]
+
     if not args.from_llama:
-        merge(args, src_driver, tgt_driver)
+        if args.new:
+            new_merge(args, src_driver, tgt_driver)
+        else:
+            merge(args, src_driver, tgt_driver)
         # change src and tgt
         args.src = args.tgt
         if args.tgt.endswith("/"):

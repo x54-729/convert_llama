@@ -12,6 +12,8 @@ import torch
 from tqdm import tqdm
 from transformers import LlamaConfig, LlamaForCausalLM
 
+from utils import parse_target_url
+
 NUM_SHARDS = {
     "7B": 1,
     "13B": 2,
@@ -26,11 +28,6 @@ def convert_to_hf(args, src_driver, tgt_driver):
     print("Converting to huggingface format...")
     src = args.src
     tgt = args.tgt
-    assert len(tgt.split("://")) == 2
-    prefix, path = tgt.split("://")
-    parts = path.split(os.sep)
-    bucket_name = parts[0]
-    path = os.sep.join(parts[1:]).strip('/')
 
     params = src_driver.json_load(os.path.join(src, "params.json"))
     num_shards = NUM_SHARDS[args.model_size]
@@ -190,9 +187,6 @@ def convert_to_hf(args, src_driver, tgt_driver):
     print(f"Saving to temp folder {folder} in the Transformers format.")
     tmp_folder = os.path.join(folder, "tmp")
     model.save_pretrained(tmp_folder)
-    if args.ak is not None and args.sk is not None:
-        tgt_url = f"{prefix}://{args.ak}:{args.sk}@{bucket_name}.{args.bucket_ip}/{path}/"
-    else:
-        tgt_url = f"{prefix}://{bucket_name}.{args.bucket_ip}/{path}/"
+    tgt_url = parse_target_url(args)
     os.system(f'/mnt/cache/share/sensesync cp {tmp_folder}/ {tgt_url}')
     shutil.rmtree(folder)

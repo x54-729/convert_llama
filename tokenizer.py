@@ -7,6 +7,7 @@ import warnings
 from transformers import LlamaTokenizer
 
 from io_driver import choose_driver
+from utils import parse_target_url
 
 try:
     from transformers import LlamaTokenizerFast
@@ -29,18 +30,10 @@ def write_tokenizer(args, src_drvier, tgt_driver):
         folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
         os.makedirs(folder, exist_ok=True)
         try:
-            assert len(args.tgt.split("://")) == 2
-            prefix, path = args.tgt.split("://")
-            parts = path.split(os.sep)
-            bucket_name = parts[0]
-            path = os.sep.join(parts[1:]).strip('/')
             folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
+            tgt_url = parse_target_url(args)
             print(f"Saving to temp folder {folder}")
             tokenizer.save_pretrained(folder)
-            if args.ak is not None and args.sk is not None:
-                tgt_url = f"{prefix}://{args.ak}:{args.sk}@{bucket_name}.{args.bucket_ip}/{path}/"
-            else:
-                tgt_url = f"{prefix}://{bucket_name}.{args.bucket_ip}/{path}/"
             os.system(f'/mnt/cache/share/sensesync cp {folder}/ {tgt_url}')
         finally:
             shutil.rmtree(folder)

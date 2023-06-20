@@ -8,6 +8,8 @@ import random
 import torch
 from tqdm import tqdm
 
+from utils import parse_target_url
+
 def merge_pp(folder, driver, tp, max_pp):
     """
     给定一个 folder ，merge 下面的 pipeline model
@@ -76,13 +78,10 @@ def merge(args, src_driver, tgt_driver):
     print('Start merging.', flush=True)
     print("Ready to save weights...", flush=True)
 
-    assert len(tgt.split("://")) == 2
-    prefix, path = tgt.split("://")
-    parts = path.split(os.sep)
-    bucket_name = parts[0]
-    path = os.sep.join(parts[1:]).strip('/')
+    tgt_url = parse_target_url(args)
     folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
     os.makedirs(folder, exist_ok=True)
+
     try:
         for tp in tqdm(range(max_tp)):
             idx = tp
@@ -105,10 +104,6 @@ def merge(args, src_driver, tgt_driver):
             tmp_fp = os.path.join(folder, f'tp_{idx}.pt')
             torch.save(current_states, tmp_fp)
             # sensesync copy
-            if args.ak is not None and args.sk is not None:
-                tgt_url = f"{prefix}://{args.ak}:{args.sk}@{bucket_name}.{args.bucket_ip}/{path}/"
-            else:
-                tgt_url = f"{prefix}://{bucket_name}.{args.bucket_ip}/{path}/"
             os.system(f'/mnt/cache/share/sensesync cp {folder} {tgt_url}')
             os.remove(tmp_fp)
     finally:

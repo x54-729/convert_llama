@@ -10,6 +10,7 @@ def parse_args():
     parser.add_argument("--sk", default=None, help="OSS 对象存储的 Secret Key")
     parser.add_argument("--merge_only", action="store_true", help="指定该参数后，程序不会将权重转换为 huggingface 格式")
     parser.add_argument("--from_llama", action="store_true", help="指定该参数后，程序会将 src 视为 llama 格式的权重文件")
+    parser.add_argument("--new", action="store_true", help="指定该参数后，程序会执行新版本权重的转换")
     args = parser.parse_args()
 
     return args
