@@ -13,6 +13,7 @@ from tqdm import tqdm
 from transformers import LlamaConfig, LlamaForCausalLM
 
 from utils import parse_target_url
+from new_llama import LlamaForCausalLM as NewLlamaForCausalLM
 
 NUM_SHARDS = {
     "7B": 1,
@@ -38,6 +39,9 @@ def convert_to_hf(args, src_driver, tgt_driver):
     dims_per_head = dim // n_heads
     base = 10000.0
     inv_freq = 1.0 / (base ** (torch.arange(0, dims_per_head, 2).float() / dims_per_head))
+    # new
+    if args.new:
+        bias = params["bias"]
 
     # permute for sliced rotary
     def permute(w):
@@ -79,6 +83,13 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 f"model.layers.{layer_i}.input_layernorm.weight": loaded[f"layers.{layer_i}.attention_norm.weight"],
                 f"model.layers.{layer_i}.post_attention_layernorm.weight": loaded[f"layers.{layer_i}.ffn_norm.weight"],
             }
+            if args.new:
+                state_dict.update({
+                    f"model.layers.{layer_i}.self_attn.q_proj.bias": loaded[f"layers.{layer_i}.attention.wq.bias"],
+                    f"model.layers.{layer_i}.self_attn.k_proj.bias": loaded[f"layers.{layer_i}.attention.wk.bias"],
+                    f"model.layers.{layer_i}.self_attn.v_proj.bias": loaded[f"layers.{layer_i}.attention.wv.bias"],
+                    f"model.layers.{layer_i}.self_attn.o_proj.bias": loaded[f"layers.{layer_i}.attention.wo.bias"],
+                })
         else:
             # Sharded
             # Note that in the 13B checkpoint, not cloning the two following weights will result in the checkpoint
@@ -100,6 +111,14 @@ def convert_to_hf(args, src_driver, tgt_driver):
                     dim=0,
                 ).reshape(dim, dim)
             )
+            if args.new:
+                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.bias"] = torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wq.bias"]
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                )
             state_dict[f"model.layers.{layer_i}.self_attn.k_proj.weight"] = permute(
                 torch.cat(
                     [
@@ -109,6 +128,14 @@ def convert_to_hf(args, src_driver, tgt_driver):
                     dim=0,
                 ).reshape(dim, dim)
             )
+            if args.new:
+                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.bias"] = torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wk.bias"]
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                )
             state_dict[f"model.layers.{layer_i}.self_attn.v_proj.weight"] = torch.cat(
                 [
                     loaded[i][f"layers.{layer_i}.attention.wv.weight"].view(n_heads_per_shard, dims_per_head, dim)
@@ -116,10 +143,21 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 ],
                 dim=0,
             ).reshape(dim, dim)
+            if args.new:
+                state_dict[f"model.layers.{layer_i}.self_attn.v_proj.bias"] = torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wv.bias"]
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                )
 
             state_dict[f"model.layers.{layer_i}.self_attn.o_proj.weight"] = torch.cat(
                 [loaded[i][f"layers.{layer_i}.attention.wo.weight"] for i in range(num_shards)], dim=1
             )
+            if args.new:
+                state_dict[f"model.layers.{layer_i}.self_attn.o_proj.bias"] = \
+                loaded[0][f"layers.{layer_i}.attention.wq.bias"]
             state_dict[f"model.layers.{layer_i}.mlp.gate_proj.weight"] = torch.cat(
                 [loaded[i][f"layers.{layer_i}.feed_forward.w1.weight"] for i in range(num_shards)], dim=0
             )
@@ -172,15 +210,22 @@ def convert_to_hf(args, src_driver, tgt_driver):
         num_attention_heads=params["n_heads"],
         num_hidden_layers=params["n_layers"],
         rms_norm_eps=params["norm_eps"],
+        bias=params["bias"]
     )
+    if params["vocab_size"] != -1:
+        config.vocab_size = params["vocab_size"]
     config.save_pretrained(folder)
 
     # Make space so we can load the model properly now.
     del state_dict
     del loaded
     gc.collect()
-    print("Loading the checkpoint in a Llama model.")
-    model = LlamaForCausalLM.from_pretrained(folder, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+    if args.new:
+        print("Loading the checkpoint in a new Llama model.")
+        model = NewLlamaForCausalLM.from_pretrained(folder, torch_dtype=torch.float16, low_cpu_mem_usage=True)
+    else:
+        print("Loading the checkpoint in a Llama model.")
+        model = LlamaForCausalLM.from_pretrained(folder, torch_dtype=torch.float16, low_cpu_mem_usage=True)
     # Avoid saving this as part of the config.
     del model.config._name_or_path
 
