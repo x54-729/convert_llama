@@ -47,6 +47,9 @@ def convert_to_hf(args, src_driver, tgt_driver):
     def permute(w):
         return w.view(n_heads, dim // n_heads // 2, 2, dim).transpose(1, 2).reshape(dim, dim)
 
+    def permute_bias(b):
+        return b.view(n_heads, dim // n_heads // 2, 2).transpose(1, 2).reshape(-1)
+
     # Load weights
     folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
     os.makedirs(folder, exist_ok=True)
@@ -85,8 +88,12 @@ def convert_to_hf(args, src_driver, tgt_driver):
             }
             if args.new:
                 state_dict.update({
-                    f"model.layers.{layer_i}.self_attn.q_proj.bias": loaded[f"layers.{layer_i}.attention.wq.bias"],
-                    f"model.layers.{layer_i}.self_attn.k_proj.bias": loaded[f"layers.{layer_i}.attention.wk.bias"],
+                    f"model.layers.{layer_i}.self_attn.q_proj.bias": permute_bias(
+                        loaded[f"layers.{layer_i}.attention.wq.bias"]
+                    ),
+                    f"model.layers.{layer_i}.self_attn.k_proj.bias": permute_bias(
+                        loaded[f"layers.{layer_i}.attention.wk.bias"]
+                    ),
                     f"model.layers.{layer_i}.self_attn.v_proj.bias": loaded[f"layers.{layer_i}.attention.wv.bias"],
                     f"model.layers.{layer_i}.self_attn.o_proj.bias": loaded[f"layers.{layer_i}.attention.wo.bias"],
                 })
@@ -112,12 +119,14 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 ).reshape(dim, dim)
             )
             if args.new:
-                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.bias"] = torch.cat(
-                    [
-                        loaded[i][f"layers.{layer_i}.attention.wq.bias"]
-                        for i in range(num_shards)
-                    ],
-                    dim=0,
+                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.bias"] = permute_bias(
+                    torch.cat(
+                        [
+                            loaded[i][f"layers.{layer_i}.attention.wq.bias"].view(n_heads_per_shard, dims_per_head)
+                            for i in range(num_shards)
+                        ],
+                        dim=0,
+                    ).reshape(-1)
                 )
             state_dict[f"model.layers.{layer_i}.self_attn.k_proj.weight"] = permute(
                 torch.cat(
@@ -129,12 +138,14 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 ).reshape(dim, dim)
             )
             if args.new:
-                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.bias"] = torch.cat(
-                    [
-                        loaded[i][f"layers.{layer_i}.attention.wk.bias"]
-                        for i in range(num_shards)
-                    ],
-                    dim=0,
+                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.bias"] = permute_bias(
+                    torch.cat(
+                        [
+                            loaded[i][f"layers.{layer_i}.attention.wk.bias"].view(n_heads_per_shard, dims_per_head)
+                            for i in range(num_shards)
+                        ],
+                        dim=0,
+                    ).reshape(-1)
                 )
             state_dict[f"model.layers.{layer_i}.self_attn.v_proj.weight"] = torch.cat(
                 [
@@ -157,7 +168,7 @@ def convert_to_hf(args, src_driver, tgt_driver):
             )
             if args.new:
                 state_dict[f"model.layers.{layer_i}.self_attn.o_proj.bias"] = \
-                loaded[0][f"layers.{layer_i}.attention.wq.bias"]
+                loaded[0][f"layers.{layer_i}.attention.wo.bias"]
             state_dict[f"model.layers.{layer_i}.mlp.gate_proj.weight"] = torch.cat(
                 [loaded[i][f"layers.{layer_i}.feed_forward.w1.weight"] for i in range(num_shards)], dim=0
             )
@@ -210,8 +221,9 @@ def convert_to_hf(args, src_driver, tgt_driver):
         num_attention_heads=params["n_heads"],
         num_hidden_layers=params["n_layers"],
         rms_norm_eps=params["norm_eps"],
-        bias=params["bias"]
     )
+    if args.new:
+        config.bias = params["bias"]
     if params["vocab_size"] != -1:
         config.vocab_size = params["vocab_size"]
     config.save_pretrained(folder)
