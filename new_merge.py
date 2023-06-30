@@ -8,6 +8,12 @@ from tqdm import tqdm
 
 from utils import parse_target_url
 
+def swap(t, dim):
+    lenth = t.size(dim)
+    indexes = torch.arange(lenth).reshape(2, -1).transpose(0, 1).reshape(-1)
+    t = t.index_select(index=indexes, dim=dim)
+    return t
+
 def merge_pp(folder, driver):
     """
     给定一个 folder ，merge 下面的 pipeline model
@@ -128,10 +134,10 @@ def new_merge(args, src_driver, tgt_driver):
                 bqkv = statess[tp].pop(f'blocks.{i}.mixer.Wqkv.bias').\
                     reshape(3, param_obj['n_heads']//world_size, -1)
                 
-                current_states[f'layers.{i}.attention.wq.weight'] = wqkv[0].reshape(-1, param_obj['dim'])
-                current_states[f'layers.{i}.attention.wq.bias'] = bqkv[0].reshape(-1)
-                current_states[f'layers.{i}.attention.wk.weight'] = wqkv[1].reshape(-1, param_obj['dim'])
-                current_states[f'layers.{i}.attention.wk.bias'] = bqkv[1].reshape(-1)
+                current_states[f'layers.{i}.attention.wq.weight'] = swap(wqkv[0], dim=1).reshape(-1, param_obj['dim'])
+                current_states[f'layers.{i}.attention.wq.bias'] = swap(bqkv[0], dim=1).reshape(-1)
+                current_states[f'layers.{i}.attention.wk.weight'] = swap(wqkv[1], dim=1).reshape(-1, param_obj['dim'])
+                current_states[f'layers.{i}.attention.wk.bias'] = swap(bqkv[1], dim=1).reshape(-1)
                 current_states[f'layers.{i}.attention.wv.weight'] = wqkv[2].reshape(-1, param_obj['dim'])
                 current_states[f'layers.{i}.attention.wv.bias'] = bqkv[2].reshape(-1)
 
