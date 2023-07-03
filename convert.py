@@ -39,16 +39,10 @@ def convert_to_hf(args, src_driver, tgt_driver):
     dims_per_head = dim // n_heads
     base = 10000.0
     inv_freq = 1.0 / (base ** (torch.arange(0, dims_per_head, 2).float() / dims_per_head))
-    # new
-    if args.new:
-        bias = params["bias"]
 
     # permute for sliced rotary
     def permute(w):
         return w.view(n_heads, dim // n_heads // 2, 2, dim).transpose(1, 2).reshape(dim, dim)
-
-    def permute_bias(b):
-        return b.view(n_heads, dim // n_heads // 2, 2).transpose(1, 2).reshape(-1)
 
     # Load weights
     folder = f'/dev/shm/wait_to_upload_weight_tmp_{random.random()}/'
@@ -72,12 +66,6 @@ def convert_to_hf(args, src_driver, tgt_driver):
         if args.model_size == "7B":
             # Unsharded
             state_dict = {
-                f"model.layers.{layer_i}.self_attn.q_proj.weight": permute(
-                    loaded[f"layers.{layer_i}.attention.wq.weight"]
-                ),
-                f"model.layers.{layer_i}.self_attn.k_proj.weight": permute(
-                    loaded[f"layers.{layer_i}.attention.wk.weight"]
-                ),
                 f"model.layers.{layer_i}.self_attn.v_proj.weight": loaded[f"layers.{layer_i}.attention.wv.weight"],
                 f"model.layers.{layer_i}.self_attn.o_proj.weight": loaded[f"layers.{layer_i}.attention.wo.weight"],
                 f"model.layers.{layer_i}.mlp.gate_proj.weight": loaded[f"layers.{layer_i}.feed_forward.w1.weight"],
@@ -88,14 +76,21 @@ def convert_to_hf(args, src_driver, tgt_driver):
             }
             if args.new:
                 state_dict.update({
-                    f"model.layers.{layer_i}.self_attn.q_proj.bias": permute_bias(
-                        loaded[f"layers.{layer_i}.attention.wq.bias"]
-                    ),
-                    f"model.layers.{layer_i}.self_attn.k_proj.bias": permute_bias(
-                        loaded[f"layers.{layer_i}.attention.wk.bias"]
-                    ),
+                    f"model.layers.{layer_i}.self_attn.q_proj.weight": loaded[f"layers.{layer_i}.attention.wq.weight"],
+                    f"model.layers.{layer_i}.self_attn.k_proj.weight": loaded[f"layers.{layer_i}.attention.wk.weight"],
+                    f"model.layers.{layer_i}.self_attn.q_proj.bias": loaded[f"layers.{layer_i}.attention.wq.bias"],
+                    f"model.layers.{layer_i}.self_attn.k_proj.bias": loaded[f"layers.{layer_i}.attention.wk.bias"],
                     f"model.layers.{layer_i}.self_attn.v_proj.bias": loaded[f"layers.{layer_i}.attention.wv.bias"],
                     f"model.layers.{layer_i}.self_attn.o_proj.bias": loaded[f"layers.{layer_i}.attention.wo.bias"],
+                })
+            else:
+                state_dict.update({
+                    f"model.layers.{layer_i}.self_attn.q_proj.weight": permute(
+                        loaded[f"layers.{layer_i}.attention.wq.weight"]
+                    ),
+                    f"model.layers.{layer_i}.self_attn.k_proj.weight": permute(
+                        loaded[f"layers.{layer_i}.attention.wk.weight"]
+                    )
                 })
         else:
             # Sharded
@@ -109,44 +104,6 @@ def convert_to_hf(args, src_driver, tgt_driver):
                     f"layers.{layer_i}.ffn_norm.weight"
                 ].clone(),
             }
-            state_dict[f"model.layers.{layer_i}.self_attn.q_proj.weight"] = permute(
-                torch.cat(
-                    [
-                        loaded[i][f"layers.{layer_i}.attention.wq.weight"].view(n_heads_per_shard, dims_per_head, dim)
-                        for i in range(num_shards)
-                    ],
-                    dim=0,
-                ).reshape(dim, dim)
-            )
-            if args.new:
-                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.bias"] = permute_bias(
-                    torch.cat(
-                        [
-                            loaded[i][f"layers.{layer_i}.attention.wq.bias"].view(n_heads_per_shard, dims_per_head)
-                            for i in range(num_shards)
-                        ],
-                        dim=0,
-                    ).reshape(-1)
-                )
-            state_dict[f"model.layers.{layer_i}.self_attn.k_proj.weight"] = permute(
-                torch.cat(
-                    [
-                        loaded[i][f"layers.{layer_i}.attention.wk.weight"].view(n_heads_per_shard, dims_per_head, dim)
-                        for i in range(num_shards)
-                    ],
-                    dim=0,
-                ).reshape(dim, dim)
-            )
-            if args.new:
-                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.bias"] = permute_bias(
-                    torch.cat(
-                        [
-                            loaded[i][f"layers.{layer_i}.attention.wk.bias"].view(n_heads_per_shard, dims_per_head)
-                            for i in range(num_shards)
-                        ],
-                        dim=0,
-                    ).reshape(-1)
-                )
             state_dict[f"model.layers.{layer_i}.self_attn.v_proj.weight"] = torch.cat(
                 [
                     loaded[i][f"layers.{layer_i}.attention.wv.weight"].view(n_heads_per_shard, dims_per_head, dim)
@@ -154,7 +111,38 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 ],
                 dim=0,
             ).reshape(dim, dim)
+            state_dict[f"model.layers.{layer_i}.self_attn.o_proj.weight"] = torch.cat(
+                [loaded[i][f"layers.{layer_i}.attention.wo.weight"] for i in range(num_shards)], dim=1
+            )
             if args.new:
+                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.weight"] = torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wq.weight"].view(n_heads_per_shard, dims_per_head, dim)
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                ).reshape(dim, dim)
+                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.bias"] =  torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wq.bias"].view(n_heads_per_shard, dims_per_head)
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                ).reshape(-1)
+                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.weight"] = torch.cat(
+                    [
+                        loaded[i][f"layers.{layer_i}.attention.wk.weight"].view(n_heads_per_shard, dims_per_head, dim)
+                        for i in range(num_shards)
+                    ],
+                    dim=0,
+                ).reshape(dim, dim)
+                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.bias"] = torch.cat(
+                        [
+                            loaded[i][f"layers.{layer_i}.attention.wk.bias"].view(n_heads_per_shard, dims_per_head)
+                            for i in range(num_shards)
+                        ],
+                        dim=0,
+                    ).reshape(-1)
                 state_dict[f"model.layers.{layer_i}.self_attn.v_proj.bias"] = torch.cat(
                     [
                         loaded[i][f"layers.{layer_i}.attention.wv.bias"]
@@ -162,13 +150,28 @@ def convert_to_hf(args, src_driver, tgt_driver):
                     ],
                     dim=0,
                 )
-
-            state_dict[f"model.layers.{layer_i}.self_attn.o_proj.weight"] = torch.cat(
-                [loaded[i][f"layers.{layer_i}.attention.wo.weight"] for i in range(num_shards)], dim=1
-            )
-            if args.new:
                 state_dict[f"model.layers.{layer_i}.self_attn.o_proj.bias"] = \
                 loaded[0][f"layers.{layer_i}.attention.wo.bias"]
+            else:
+                state_dict[f"model.layers.{layer_i}.self_attn.q_proj.weight"] = permute(
+                    torch.cat(
+                        [
+                            loaded[i][f"layers.{layer_i}.attention.wq.weight"].view(n_heads_per_shard, dims_per_head, dim)
+                            for i in range(num_shards)
+                        ],
+                        dim=0,
+                    ).reshape(dim, dim)
+                )
+                state_dict[f"model.layers.{layer_i}.self_attn.k_proj.weight"] = permute(
+                torch.cat(
+                        [
+                            loaded[i][f"layers.{layer_i}.attention.wk.weight"].view(n_heads_per_shard, dims_per_head, dim)
+                            for i in range(num_shards)
+                        ],
+                        dim=0,
+                    ).reshape(dim, dim)
+                )
+
             state_dict[f"model.layers.{layer_i}.mlp.gate_proj.weight"] = torch.cat(
                 [loaded[i][f"layers.{layer_i}.feed_forward.w1.weight"] for i in range(num_shards)], dim=0
             )
@@ -179,7 +182,8 @@ def convert_to_hf(args, src_driver, tgt_driver):
                 [loaded[i][f"layers.{layer_i}.feed_forward.w3.weight"] for i in range(num_shards)], dim=0
             )
 
-        state_dict[f"model.layers.{layer_i}.self_attn.rotary_emb.inv_freq"] = inv_freq
+        if not args.new:
+            state_dict[f"model.layers.{layer_i}.self_attn.rotary_emb.inv_freq"] = inv_freq
         for k, v in state_dict.items():
             index_dict["weight_map"][k] = filename
             param_count += v.numel()
